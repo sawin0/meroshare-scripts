@@ -1,80 +1,75 @@
-## Introduction
-`main.py` - This script can check for the latest open issues, find if they're applied or not, and apply to an IPO. These options are configurable using shell flags. The script only looks for **Ordinary IPO shares**.
+## meroshare-scripts — Bulk IPO helper
 
-## Install
+Simple helper script to check open IPO issues, show per-account status, and bulk-apply for ordinary IPO shares.
 
-- Install `python3`
-- Create an `accounts.csv` file with the same format as [accounts.csv.example](accounts.csv.example) 
-- `python3 main.py --help` for help
+**What it does:**
 
-    ```shell
-    usage: main.py [-h] [-r] [-a] [-u USER] [-c COMPANY_SHARE_ID] [-n NUMBER_OF_SHARES]
-    
-    MeroShare simplified for bulk actions.
-        - Find currently open issues
-        - Check issue status (applied, unapplied, allotted or not-allotted)
-        - Generate IPO allotment reports
-    
-    options:
-      -h, --help            show this help message and exit
-      -r, --report          Check IPO allotment reports
-      -a, --apply           Apply to issues
-      -u USER, --user USER  Run script for this user only, default is run for all users in accounts.csv file
-      -c COMPANY_SHARE_ID, --company-share-id COMPANY_SHARE_ID
-                            Company share ID to apply, required when -a/--apply flag is set
-      -n NUMBER_OF_SHARES, --number-of-shares NUMBER_OF_SHARES
-                            Number of shares to apply, default is 10
-    ```
+- Lists currently open (ordinary) IPO issues.
+- Shows whether each account has already applied.
+- Optionally applies to an IPO for all or selected accounts.
+- Can generate IPO allotment reports.
+
+## Prerequisites
+
+- Python 3 (run `python3 --version`)
+- Install dependencies: `pip3 install -r requirements.txt` (if any)
+- Create `accounts.csv` using the provided `accounts.csv.example`.
+
+## Quick help
+
+Run the built-in help to see available flags and options:
+
+```shell
+python3 main.py --help
+```
+
+Typical usage (summary of flags):
+
+- `-r, --report` : Generate IPO allotment reports.
+- `-a, --apply` : Apply to an IPO (requires `-c`).
+- `-u USER, --user USER` : Limit action to a single user from `accounts.csv`.
+- `-c COMPANY_SHARE_ID, --company-share-id` : The target company share ID for applying.
+- `-n NUMBER_OF_SHARES, --number-of-shares` : Number of shares to apply (default: 10).
 
 ## Examples
-### Bulk Apply IPO
-1. List open IPOs:
-    ```shell
-    python3 main.py
-    ```
-   This will list the currently Open IPOs and their status whether the user applied. It'll also show the `COMPANY SHARE ID`, a unique ID associated with an IPO. You'll need this to apply for the IPO.
 
-2. Copy the `COMPANY SHARE ID` of the IPO you want to apply to.
-3. Bulk Apply IPO:
-    ```shell
-    python3 main.py -a -c 654 -n 10
-    ```
-   This will bulk apply IPO for all users in the `accounts.csv` file. It'll skip the user for which the IPO has already been applied.  
+1. List open IPOs and check application status for all accounts:
 
-4. If you'd like to apply IPO for a single user:
-    ```shell
-    python3 main.py -a -c 654 -n 10 -u ayerdines
-    ```
-
-
-## Usage
-### List open issues and check if they have been applied or not
 ```shell
 python3 main.py
 ```
 
-### Bulk Apply IPO all the users present in the `account.csv` file
-```shell
-python3 main.py -a -c <company share id> -n <number of shares>
-```
-> Note: This will skip the user for which the IPO has already been applied. 
+The script prints open issues and a `COMPANY SHARE ID` for each. Use that ID when applying.
 
-### Apply IPO for a single user
+2. Bulk apply the same IPO for all accounts (skips accounts that already applied):
+
 ```shell
-python3 main.py -a -c <company share id> -n <number of shares> -u <user>
+python3 main.py -a -c 654 -n 10
 ```
 
-### Run script for a user
+3. Apply for a single user from `accounts.csv`:
+
 ```shell
-python3 main.py -u <user>
+python3 main.py -a -c 654 -n 10 -u ayerdines
 ```
 
-### Generate IPO allotment reports for a single user
+4. Generate allotment reports for a single user:
+
 ```shell
-python3 main.py -r -u <user>
+python3 main.py -r -u ayerdines
 ```
 
-### Generate IPO allotment reports for all users
+5. Generate allotment reports for all users:
+
 ```shell
 python3 main.py -r
 ```
+
+## Notes & tips
+
+- The script only handles **Ordinary IPO shares**.
+- Ensure `accounts.csv` is present in the repository root and follows the example format.
+- When applying, the `--company-share-id` value is required.
+- Use `-u` to test actions on a single account before running bulk operations.
+
+If you want, I can also: update `requirements.txt`, validate `accounts.csv` format, or add a short example `accounts.csv` to the repo.
