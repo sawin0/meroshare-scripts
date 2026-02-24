@@ -4,6 +4,7 @@ import argparse
 import requests
 import constants
 from datetime import date
+import calendar
 from functools import cache, cached_property
 import urllib3
 import re
@@ -360,7 +361,15 @@ class UserSession:
 
     def generate_reports(self):
         today = date.today()
-        two_months_ago = today.replace(month=today.month - 2)
+        # Calculate two months ago, handling year wrap-around and month length
+        month = today.month - 2
+        year = today.year
+        while month <= 0:
+            month += 12
+            year -= 1
+        last_day = calendar.monthrange(year, month)[1]
+        day = min(today.day, last_day)
+        two_months_ago = date(year, month, day)
         payload = {
             "filterFieldParams": [
                 {
@@ -427,33 +436,163 @@ if __name__ == '__main__':
     share_id_arg = parser.add_argument('-c', '--company-share-id',
                                        help='Company share ID to apply, required when -a/--apply flag is set', type=int)
     parser.add_argument('-n', '--number-of-shares', help='Number of shares to apply, default is 10', default=10)
+    parser.add_argument('-I', '--interactive', action='store_true', help='Run in interactive mode')
     args = parser.parse_args()
 
     accounts = find_accounts_from_csv(args.user)
 
-    for account in accounts:
-        print(f"=========  %s  =========" % account.user.capitalize())
-
+    def safe_create_user_session(account):
         try:
-            user = UserSession(account=account)
+            return UserSession(account=account)
         except ValueError as e:
             raw = str(e)
             server_msg = _extract_server_message(raw) or raw
-            # Print message in red
             print(f"\033[31mError: {server_msg}\033[0m")
-            # Skip this account and continue with next
-            continue
+            return None
 
-        if args.report:
-            report = user.generate_reports()
-            for item in report:
-                print(f"{item['companyName']} - {item['allotmentStatus']}")
-        elif args.apply:
-            if not args.company_share_id:
-                raise argparse.ArgumentError(share_id_arg, "is required when -a/--apply flag is set, run the "
-                                                           "script without any args to find the open issues with "
-                                                           "their company share id")
-            user.apply(args.number_of_shares, company_share_id=args.company_share_id)
-        else:
-            open_issues = user.open_issues()
-            print(*open_issues, sep="\n")
+    def prompt_select_accounts(all_accounts):
+        print("Available accounts:")
+        for i, a in enumerate(all_accounts, start=1):
+            print(f"  {i}. {a.user}")
+        print("  0. All accounts")
+        sel = input("Select account numbers (comma separated), or 0 for all: ").strip()
+        if sel == '0':
+            return all_accounts
+        indices = []
+        try:
+            indices = [int(x.strip()) for x in sel.split(',') if x.strip()]
+        except Exception:
+            print("Invalid selection")
+            return []
+        chosen = [all_accounts[i-1] for i in indices if 1 <= i <= len(all_accounts)]
+        return chosen
+
+    def prompt_select_issue_from_user(u: UserSession):
+        issues = u.open_issues()
+        if not issues:
+            print("No open issues found")
+            return None
+        for i, iss in enumerate(issues, start=1):
+            print(f"  {i}. {iss.company_name} ({iss.scrip}) - id={iss.company_share_id}")
+        sel = input("Select issue number to apply or press Enter to cancel: ").strip()
+        if not sel:
+            return None
+        try:
+            idx = int(sel)
+            if 1 <= idx <= len(issues):
+                return issues[idx-1].company_share_id
+        except Exception:
+            print("Invalid selection")
+        return None
+
+    def interactive_main(all_accounts):
+        while True:
+            print('\nInteractive menu:')
+            print('  1. View open issues for an account')
+            print('  2. Generate reports for an account')
+            print('  3. Apply to an issue for a single account')
+            print('  4. Bulk apply across accounts (same companyShareId)')
+            print('  5. Exit')
+            choice = input('Choose an option: ').strip()
+            if choice == '1':
+                chosen = prompt_select_accounts(all_accounts)
+                if not chosen:
+                    continue
+                for acc in chosen:
+                    print(f"=========  %s  =========" % acc.user.capitalize())
+                    user = safe_create_user_session(acc)
+                    if not user:
+                        continue
+                    issues = user.open_issues()
+                    print(*issues, sep="\n")
+            elif choice == '2':
+                chosen = prompt_select_accounts(all_accounts)
+                if not chosen:
+                    continue
+                for acc in chosen:
+                    print(f"=========  %s  =========" % acc.user.capitalize())
+                    user = safe_create_user_session(acc)
+                    if not user:
+                        continue
+                    report = user.generate_reports()
+                    for item in report:
+                        print(f"{item['companyName']} - {item.get('allotmentStatus', 'N/A')}")
+            elif choice == '3':
+                chosen = prompt_select_accounts(all_accounts)
+                if not chosen or len(chosen) != 1:
+                    print('Please select exactly one account for single-account apply')
+                    continue
+                acc = chosen[0]
+                print(f"=========  %s  =========" % acc.user.capitalize())
+                user = safe_create_user_session(acc)
+                if not user:
+                    continue
+                csid = prompt_select_issue_from_user(user)
+                if not csid:
+                    continue
+                num = input('Number of shares to apply (default 10): ').strip() or '10'
+                try:
+                    num = int(num)
+                except Exception:
+                    print('Invalid number')
+                    continue
+                confirm = input(f'Apply {num} shares to {csid} for {acc.user}? (y/N): ').strip().lower()
+                if confirm == 'y':
+                    user.apply(num, company_share_id=csid)
+            elif choice == '4':
+                chosen = prompt_select_accounts(all_accounts)
+                if not chosen:
+                    continue
+                csid_in = input('Enter companyShareId to apply across selected accounts: ').strip()
+                try:
+                    csid = int(csid_in)
+                except Exception:
+                    print('Invalid companyShareId')
+                    continue
+                num = input('Number of shares to apply (default 10): ').strip() or '10'
+                try:
+                    num = int(num)
+                except Exception:
+                    print('Invalid number')
+                    continue
+                confirm = input(f'Apply {num} shares to {csid} for {len(chosen)} accounts? (y/N): ').strip().lower()
+                if confirm != 'y':
+                    continue
+                for acc in chosen:
+                    print(f"=========  %s  =========" % acc.user.capitalize())
+                    user = safe_create_user_session(acc)
+                    if not user:
+                        continue
+                    user.apply(num, company_share_id=csid)
+            elif choice == '5':
+                print('Exiting')
+                break
+            else:
+                print('Invalid choice')
+
+    # Determine whether to run interactive: explicit flag OR no action flags supplied
+    run_interactive = args.interactive or not (args.report or args.apply or args.company_share_id or args.user)
+
+    if run_interactive:
+        interactive_main(accounts)
+    else:
+        for account in accounts:
+            print(f"=========  %s  =========" % account.user.capitalize())
+
+            user = safe_create_user_session(account)
+            if not user:
+                continue
+
+            if args.report:
+                report = user.generate_reports()
+                for item in report:
+                    print(f"{item['companyName']} - {item['allotmentStatus']}")
+            elif args.apply:
+                if not args.company_share_id:
+                    raise argparse.ArgumentError(share_id_arg, "is required when -a/--apply flag is set, run the "
+                                                       "script without any args to find the open issues with "
+                                                       "their company share id")
+                user.apply(int(args.number_of_shares), company_share_id=args.company_share_id)
+            else:
+                open_issues = user.open_issues()
+                print(*open_issues, sep="\n")
