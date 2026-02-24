@@ -5,6 +5,46 @@ import requests
 import constants
 from datetime import date
 from functools import cache, cached_property
+import urllib3
+import re
+import xml.etree.ElementTree as ET
+
+# Suppress only the insecure request warning for verify=False calls
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+
+def _extract_server_message(text: str):
+    """Try to extract a useful server message from an exception text.
+
+    Handles XML bodies like <exceptionMessage>...<message>...</message>...</exceptionMessage>
+    and falls back to simple regex matches.
+    """
+    if not text:
+        return None
+
+    # If the repr included the XML, find first '<' and parse from there
+    idx = text.find('<')
+    if idx != -1:
+        xml = text[idx:]
+        try:
+            root = ET.fromstring(xml)
+            msg = root.find('.//message')
+            if msg is not None and msg.text:
+                return msg.text.strip()
+        except Exception:
+            pass
+
+    # Try a direct regex for <message>..</message>
+    m = re.search(r'<message>(.*?)</message>', text, re.S)
+    if m:
+        return m.group(1).strip()
+
+    # Fallback: common human-readable errors
+    m2 = re.search(r'Invalid [^\.]+\.?', text)
+    if m2:
+        return m2.group(0).strip()
+
+    return None
 
 
 def find_accounts_from_csv(user=None):
@@ -151,10 +191,37 @@ class UserSession:
             verify=False
         )
 
+        # Try to parse useful response content for better diagnostics
+        try:
+            resp_json = r.json()
+        except Exception:
+            resp_json = None
+
         if r.ok:
-            self.authorization = r.headers['Authorization']
+            # Prefer header, but also accept common token keys from body
+            auth = None
+            auth = r.headers.get('Authorization') or r.headers.get('authorization')
+
+            if not auth and isinstance(resp_json, dict):
+                # Common fallback keys
+                for key in ('Authorization', 'authorization', 'token', 'access_token'):
+                    if key in resp_json:
+                        auth = resp_json.get(key)
+                        break
+
+            if auth:
+                self.authorization = auth
+            else:
+                raise ValueError(
+                    "Unable to find Authorization in response for %s. Status=%s Response=%r"
+                    % (self.account.username, r.status_code, resp_json or r.text)
+                )
         else:
-            raise ValueError('Unable to create session for %s' % self.account.username)
+            # Provide more informative error including body when available
+            raise ValueError(
+                "Unable to create session for %s (status=%s): %r"
+                % (self.account.username, r.status_code, resp_json or r.text)
+            )
 
     def set_branch_info(self):
         bank = self.bank_info()
@@ -367,7 +434,15 @@ if __name__ == '__main__':
     for account in accounts:
         print(f"=========  %s  =========" % account.user.capitalize())
 
-        user = UserSession(account=account)
+        try:
+            user = UserSession(account=account)
+        except ValueError as e:
+            raw = str(e)
+            server_msg = _extract_server_message(raw) or raw
+            # Print message in red
+            print(f"\033[31mError: {server_msg}\033[0m")
+            # Skip this account and continue with next
+            continue
 
         if args.report:
             report = user.generate_reports()
