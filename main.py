@@ -5,6 +5,7 @@ import requests
 import constants
 from datetime import date
 import calendar
+import json
 from functools import cache, cached_property
 import urllib3
 import re
@@ -127,7 +128,13 @@ class Issue:
 
     @property
     def is_applied(self):
-        return True if self.action == "edit" else False
+        # Determine applied status solely from the `action` field per user request.
+        act = (self._json_data.get('action') or '')
+        act_l = str(act).strip().lower()
+
+        # Common action values that indicate the issue is applied or in-application
+        applied_actions = {'edit', 'apply', 'applied', 'updated', 'inprocess', 'in_process', 'in-process'}
+        return act_l in applied_actions
 
     @cached_property
     def company_share_id(self):
@@ -191,6 +198,15 @@ class UserSession:
             },
             verify=False
         )
+
+        # Debug: print raw response when requested
+        if globals().get('args') and getattr(args, 'debug', False):
+            try:
+                print('=== AUTH RESPONSE ===')
+                print('Status:', r.status_code)
+                print(r.text)
+            except Exception:
+                pass
 
         # Try to parse useful response content for better diagnostics
         try:
@@ -353,6 +369,13 @@ class UserSession:
 
         r = requests.post('https://webbackend.cdsc.com.np/api/meroShare/companyShare/applicableIssue/',
                           json=payload, headers=self.authorization_headers, verify=False)
+        if globals().get('args') and getattr(args, 'debug', False):
+            try:
+                print('=== OPEN ISSUES RESPONSE ===')
+                print('Status:', r.status_code)
+                print(r.text)
+            except Exception:
+                pass
         if r.ok:
             objects = r.json()['object']
             return [Issue(_item) for _item in objects]
@@ -396,6 +419,13 @@ class UserSession:
 
         r = requests.post('https://webbackend.cdsc.com.np/api/meroShare/applicantForm/active/search/',
                           json=payload, headers=self.authorization_headers)
+        if globals().get('args') and getattr(args, 'debug', False):
+            try:
+                print('=== GENERATE REPORTS RESPONSE ===')
+                print('Status:', r.status_code)
+                print(r.text)
+            except Exception:
+                pass
         if r.ok:
             objects = r.json()['object']
             return [self.with_allotment_status(_item) for _item in objects]
@@ -437,6 +467,7 @@ if __name__ == '__main__':
                                        help='Company share ID to apply, required when -a/--apply flag is set', type=int)
     parser.add_argument('-n', '--number-of-shares', help='Number of shares to apply, default is 10', default=10)
     parser.add_argument('-I', '--interactive', action='store_true', help='Run in interactive mode')
+    parser.add_argument('-D', '--debug', action='store_true', help='Print raw issue JSON for debugging')
     args = parser.parse_args()
 
     accounts = find_accounts_from_csv(args.user)
@@ -504,7 +535,10 @@ if __name__ == '__main__':
                     if not user:
                         continue
                     issues = user.open_issues()
-                    print(*issues, sep="\n")
+                    for iss in issues:
+                        print(iss)
+                        if args.debug:
+                            print(json.dumps(iss._json_data, indent=2))
             elif choice == '2':
                 chosen = prompt_select_accounts(all_accounts)
                 if not chosen:
@@ -595,4 +629,7 @@ if __name__ == '__main__':
                 user.apply(int(args.number_of_shares), company_share_id=args.company_share_id)
             else:
                 open_issues = user.open_issues()
-                print(*open_issues, sep="\n")
+                for iss in open_issues:
+                    print(iss)
+                    if args.debug:
+                        print(json.dumps(iss._json_data, indent=2))
