@@ -9,67 +9,86 @@ Simple helper script to check open IPO issues, show per-account status, and bulk
 - Optionally applies to an IPO for all or selected accounts.
 - Can generate IPO allotment reports.
 
-## Prerequisites
+## Quick start (easy)
 
-- Python 3 (run `python3 --version`)
-- Install dependencies: `pip3 install -r requirements.txt` (if any)
-- Create `accounts.csv` using the provided `accounts.csv.example`.
+1. Install Python 3 if you don't already have it. Check with:
 
-## Quick help
-
-Run the built-in help to see available flags and options:
-
-```shell
-python3 main.py --help
+```bash
+python3 --version
 ```
 
-Typical usage (summary of flags):
+2. Install dependencies (if any are listed):
 
-- `-r, --report` : Generate IPO allotment reports.
-- `-a, --apply` : Apply to an IPO (requires `-c`).
-- `-u USER, --user USER` : Limit action to a single user from `accounts.csv`.
-- `-c COMPANY_SHARE_ID, --company-share-id` : The target company share ID for applying.
-- `-n NUMBER_OF_SHARES, --number-of-shares` : Number of shares to apply (default: 10).
+```bash
+pip3 install -r requirements.txt
+```
 
-## Examples
+3. Create an `accounts.csv` file from the example file `accounts.csv.example` and fill in your account details.
 
-1. List open IPOs and check application status for all accounts:
+4. Run the script. For most users the easiest is interactive mode (menu-driven):
 
-```shell
+```bash
 python3 main.py
 ```
 
-The script prints open issues and a `COMPANY SHARE ID` for each. Use that ID when applying.
+What the script can do (simple terms):
 
-2. Bulk apply the same IPO for all accounts (skips accounts that already applied):
+- Show currently open IPOs you can apply for.
+- Tell you whether each of your accounts has already applied.
+- Apply to an IPO for one or many accounts in bulk.
+- Create a short report of IPO allotments (who got shares).
 
-```shell
+Common commands (copy & paste):
+
+- Run interactive menu (recommended for non-technical users):
+
+```bash
+python3 main.py -I
+```
+
+- List open IPOs and see per-account status:
+
+```bash
+python3 main.py
+```
+
+- Apply the same IPO to all accounts (replace 654 with the COMPANY SHARE ID shown by the script):
+
+```bash
 python3 main.py -a -c 654 -n 10
 ```
 
-3. Apply for a single user from `accounts.csv`:
+- Apply for a single account only (replace USER with the `user` from your `accounts.csv`):
 
-```shell
-python3 main.py -a -c 654 -n 10 -u ayerdines
+```bash
+python3 main.py -a -c 654 -n 10 -u USER
 ```
 
-4. Generate allotment reports for a single user:
+- Get IPO allotment reports:
 
-```shell
-python3 main.py -r -u ayerdines
-```
-
-5. Generate allotment reports for all users:
-
-```shell
+```bash
 python3 main.py -r
 ```
 
-## Notes & tips
+Helpful flags:
 
-- The script only handles **Ordinary IPO shares**.
-- Ensure `accounts.csv` is present in the repository root and follows the example format.
-- When applying, the `--company-share-id` value is required.
-- Use `-u` to test actions on a single account before running bulk operations.
+- `-a` or `--apply`: apply to an IPO (you must also pass `-c`)
+- `-c` or `--company-share-id`: the ID to apply to (the script prints this when listing issues)
+- `-u` or `--user`: run the action for a single user from `accounts.csv`
+- `-n` or `--number-of-shares`: number of shares to apply (default 10)
+- `-I` or `--interactive`: open the menu-based interface
+- `-D` or `--debug`: print more debugging info (advanced)
 
-If you want, I can also: update `requirements.txt`, validate `accounts.csv` format, or add a short example `accounts.csv` to the repo.
+Safety & privacy (please read):
+
+- The script reads credentials from `accounts.csv`. Keep that file private and do not commit it to public
+  repositories.
+- The script sends sensitive data (like PINs) to the remote server. Run it only on a trusted computer.
+- For some network calls the script disables strict HTTPS verification to avoid certificate errors. This helps
+  in some environments but is less secure — if you manage certificates, re-enable verification in `main.py`.
+
+Need help? I can:
+
+- Add a simple `accounts.csv` example with fake data.
+- Check or pin packages in `requirements.txt`.
+- Walk you through running the interactive menu step-by-step.
