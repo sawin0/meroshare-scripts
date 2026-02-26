@@ -21,25 +21,6 @@ def _extract_server_message(text: str):
     Handles XML bodies like <exceptionMessage>...<message>...</message>...</exceptionMessage>
     and falls back to simple regex matches.
     """
-
-
-# utility for colouring allotment status
-
-def colour_status(status: str) -> str:
-    """Return status string with appropriate ANSI colour codes.
-
-    green for allotted/approved, red for anything else (except
-    N/A which is white).  The function protects against matching
-    "not allotted" as green.
-    """
-    if status is None:
-        status = 'N/A'
-    if status == 'N/A':
-        return f"\033[37m{status}\033[0m"
-    stlow = status.lower()
-    if ('not' not in stlow) and ('allot' in stlow or 'alloc' in stlow or stlow == 'approved'):
-        return f"\033[32m{status}\033[0m"
-    return f"\033[31m{status}\033[0m"
     if not text:
         return None
 
@@ -66,6 +47,40 @@ def colour_status(status: str) -> str:
         return m2.group(0).strip()
 
     return None
+
+
+# utility for colouring allotment status
+
+def colour_status(status: str) -> str:
+    """Return status string with appropriate ANSI colour codes.
+
+    Green: allotted / allocated / approved
+    Red: anything else
+    White: N/A
+
+    Protects against matching "not allotted" as green.
+    """
+    status = status or "N/A"
+
+    colours = {
+        "white": "\033[37m",
+        "green": "\033[32m",
+        "red": "\033[31m",
+        "reset": "\033[0m",
+    }
+
+    if status == "N/A":
+        colour = colours["white"]
+    else:
+        stlow = status.casefold()  # better than lower() for robustness
+        is_positive = (
+            "not" not in stlow and
+            any(word in stlow for word in ("allot", "alloc")) or
+            stlow == "approved"
+        )
+        colour = colours["green"] if is_positive else colours["red"]
+
+    return f"{colour}{status}{colours['reset']}"
 
 
 def find_accounts_from_csv(user=None):
