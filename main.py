@@ -14,6 +14,18 @@ import xml.etree.ElementTree as ET
 # Suppress only the insecure request warning for verify=False calls
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+# Default timeout (seconds) for all HTTP requests to avoid hanging indefinitely
+DEFAULT_TIMEOUT = 10
+
+# Apply a default timeout to all requests made via requests.Session unless
+# an explicit `timeout=` is provided.
+_requests_sess_request_orig = requests.Session.request
+def _requests_session_request_with_timeout(self, method, url, *args, **kwargs):
+    if 'timeout' not in kwargs:
+        kwargs['timeout'] = DEFAULT_TIMEOUT
+    return _requests_sess_request_orig(self, method, url, *args, **kwargs)
+requests.Session.request = _requests_session_request_with_timeout
+
 
 def _extract_server_message(text: str):
     """Try to extract a useful server message from an exception text.
