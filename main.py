@@ -21,6 +21,25 @@ def _extract_server_message(text: str):
     Handles XML bodies like <exceptionMessage>...<message>...</message>...</exceptionMessage>
     and falls back to simple regex matches.
     """
+
+
+# utility for colouring allotment status
+
+def colour_status(status: str) -> str:
+    """Return status string with appropriate ANSI colour codes.
+
+    green for allotted/approved, red for anything else (except
+    N/A which is white).  The function protects against matching
+    "not allotted" as green.
+    """
+    if status is None:
+        status = 'N/A'
+    if status == 'N/A':
+        return f"\033[37m{status}\033[0m"
+    stlow = status.lower()
+    if ('not' not in stlow) and ('allot' in stlow or 'alloc' in stlow or stlow == 'approved'):
+        return f"\033[32m{status}\033[0m"
+    return f"\033[31m{status}\033[0m"
     if not text:
         return None
 
@@ -550,7 +569,7 @@ if __name__ == '__main__':
                         continue
                     report = user.generate_reports()
                     for item in report:
-                        print(f"{item['companyName']} - {item.get('allotmentStatus', 'N/A')}")
+                        print(f"{item['companyName']} - {colour_status(item.get('allotmentStatus', 'N/A'))}")
             elif choice == '3':
                 chosen = prompt_select_accounts(all_accounts)
                 if not chosen or len(chosen) != 1:
@@ -620,7 +639,7 @@ if __name__ == '__main__':
             if args.report:
                 report = user.generate_reports()
                 for item in report:
-                    print(f"{item['companyName']} - {item['allotmentStatus']}")
+                    print(f"{item['companyName']} - {colour_status(item.get('allotmentStatus', 'N/A'))}")
             elif args.apply:
                 if not args.company_share_id:
                     raise argparse.ArgumentError(share_id_arg, "is required when -a/--apply flag is set, run the "
