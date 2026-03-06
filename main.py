@@ -61,6 +61,23 @@ def _extract_server_message(text: str):
     return None
 
 
+def _find_in_json(obj, key):
+    """Recursively search for the first occurrence of `key` in JSON-like dict/list."""
+    if isinstance(obj, dict):
+        if key in obj:
+            return obj[key]
+        for v in obj.values():
+            found = _find_in_json(v, key)
+            if found is not None:
+                return found
+    elif isinstance(obj, list):
+        for item in obj:
+            found = _find_in_json(item, key)
+            if found is not None:
+                return found
+    return None
+
+
 # utility for colouring allotment status
 
 def colour_status(status: str) -> str:
@@ -78,6 +95,7 @@ def colour_status(status: str) -> str:
         "white": "\033[37m",
         "green": "\033[32m",
         "red": "\033[31m",
+        "orange": "\033[38;5;208m",
         "reset": "\033[0m",
     }
 
@@ -85,12 +103,15 @@ def colour_status(status: str) -> str:
         colour = colours["white"]
     else:
         stlow = status.casefold()  # better than lower() for robustness
-        is_positive = (
-            "not" not in stlow and
-            any(word in stlow for word in ("allot", "alloc")) or
-            stlow == "approved"
-        )
-        colour = colours["green"] if is_positive else colours["red"]
+        # Special-case 'Applied' -> orange
+        if stlow == 'applied':
+            colour = colours['orange']
+        else:
+            # Positive when not explicitly negated and either contains allot/alloc or is approved
+            is_positive = ("not" not in stlow) and (
+                any(word in stlow for word in ("allot", "alloc")) or stlow == "approved"
+            )
+            colour = colours["green"] if is_positive else colours["red"]
 
     return f"{colour}{status}{colours['reset']}"
 
@@ -480,18 +501,75 @@ class UserSession:
 
     def with_allotment_status(self, _item):
         application_id = _item['applicantFormId']
-        if _item['statusName'] in ['TRANSACTION_SUCCESS', 'APPROVED']:
-            r = requests.get(
-                f"https://webbackend.cdsc.com.np/api/meroShare/applicantForm/report/detail/{application_id}",
-                headers=self.authorization_headers,
-                verify=False)
-            if r.ok:
-                allotment_status = r.json()['statusName']
-                _item['allotmentStatus'] = allotment_status
+        # Some servers return different status names when allotment information
+        # is available. Treat a broader set of statuses as "allotment-ready",
+        # including VERIFIED which was previously being treated as N/A.
+        # Always fetch detail to get the most accurate allotment info
+        top_status = (_item.get('statusName') or '').strip()
+        top_status_up = top_status.upper()
+
+        url = f"https://webbackend.cdsc.com.np/api/meroShare/applicantForm/report/detail/{application_id}"
+        r = requests.get(url, headers=self.authorization_headers, verify=False)
+
+        # Debug: log response when requested
+        if globals().get('args') and getattr(args, 'debug', False):
+            try:
+                print('=== ALLOTMENT DETAIL RESPONSE ===')
+                print('URL:', url)
+                print('Status:', r.status_code)
+                print(r.text)
+            except Exception:
+                pass
+
+        if r.ok:
+            try:
+                data = r.json()
+            except Exception:
+                data = None
+
+            received_kitta = None
+            status_desc = None
+            status_nm = None
+
+            if isinstance(data, dict):
+                received_kitta = _find_in_json(data, 'receivedKitta')
+                status_desc = _find_in_json(data, 'statusDescription')
+                status_nm = _find_in_json(data, 'statusName')
+
+            try:
+                rk = int(received_kitta) if received_kitta is not None else 0
+            except Exception:
+                rk = 0
+
+            if rk > 0:
+                _item['allotmentStatus'] = f"Alloted ({rk})"
+                return _item
+
+            # Map top-level statusName to user-friendly labels per request
+            if top_status_up == 'APPROVED':
+                # User expects 'Applied' when top-level says APPROVED
+                _item['allotmentStatus'] = 'Applied'
+                return _item
+
+            if 'APPROVE' in top_status_up:
+                # e.g., BLOCKED_APPROVE -> Approved
+                _item['allotmentStatus'] = 'Approved'
+                return _item
+
+            # Fallback to detail fields
+            if status_desc:
+                sd_up = str(status_desc).strip().upper()
+                # Map known canonical detail descriptions
+                if sd_up == 'TRANSACTION SUCCESS':
+                    _item['allotmentStatus'] = 'Not Alloted'
+                else:
+                    _item['allotmentStatus'] = str(status_desc).strip()
+            elif status_nm:
+                _item['allotmentStatus'] = str(status_nm).strip()
             else:
-                raise ValueError("Error while fetching application allotment status!!")
+                _item['allotmentStatus'] = 'Unknown'
         else:
-            _item['allotmentStatus'] = 'N/A'
+            raise ValueError("Error while fetching application allotment status!!")
 
         return _item
 
