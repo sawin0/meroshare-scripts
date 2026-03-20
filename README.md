@@ -86,9 +86,3 @@ Safety & privacy (please read):
 - The script sends sensitive data (like PINs) to the remote server. Run it only on a trusted computer.
 - For some network calls the script disables strict HTTPS verification to avoid certificate errors. This helps
   in some environments but is less secure — if you manage certificates, re-enable verification in `main.py`.
-
-Need help? I can:
-
-- Add a simple `accounts.csv` example with fake data.
-- Check or pin packages in `requirements.txt`.
-- Walk you through running the interactive menu step-by-step.
